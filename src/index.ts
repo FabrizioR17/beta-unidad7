@@ -49,7 +49,7 @@ app.post('/api/v1/users', async (req: Request, res: Response) => {
 })
 
 app.post('/api/v1/songs', async (req: Request, res: Response) => {
-  const { name, artist, album, year, genre, duration, privacy } = req.body
+  const { name, artist, album, year, genre, duration, privacy,playlists } = req.body
   const song = await prisma.song.create({
       data: {
           name,
@@ -59,7 +59,8 @@ app.post('/api/v1/songs', async (req: Request, res: Response) => {
           genre,
           duration,
           privacy,
-
+          playlists: {}
+        
       }
   })
   res.json(song)
@@ -138,14 +139,27 @@ app.get('/api/v1/getusers', async (req: Request, res: Response) => {
 
 app.get("/api/v1/getsongs", async (req, res) => {
   try {
-
-  const songs = await prisma.song.findMany();
-  res.status(200).json({
-      success: true,
-      message: 'Canciones obtenidos exitosamente',
-      data: songs
-  });
-} catch (error) {
+      const songs = await prisma.song.findMany();
+      const songsWithPlaylist = await Promise.all(songs.map(async (song) => {
+          const playlists = await prisma.playlist.findMany({
+              where: {
+                  songs: {
+                      some: {
+                          id:song.id
+                      }
+                  }
+              },
+              select: {
+                  name: true
+              }
+          });
+          return {
+              ...song,
+              playlists
+          }
+      }))
+      res.json({songsWithPlaylist});
+  } catch (error) {
   res.status(500).json({
       success: false,
       message: 'Error al obtener las canciones',
@@ -154,6 +168,32 @@ app.get("/api/v1/getsongs", async (req, res) => {
 }
 });
 
+app.get("/api/v1/getsongs/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const songs = await prisma.song.findMany({ where: { id: Number(id) } });
+    const song = songs[0];
+      if (!song) {
+          return res.status(404).json({ error: 'song not found' });
+      }
+      const playlists = await prisma.playlist.findMany({
+          where: {
+              songs: {
+                  some: {
+                      id: Number(id)
+                  }
+              }
+          }
+      });
+      res.json({song, playlists});
+  } catch (error) {
+    res.status(500).json({
+        success: false,
+        message: 'Error al obtener la cancion',
+        
+    });
+  }
+});
 
 app.get("/api/v1/getplaylists", async (req, res) => {
   try {
